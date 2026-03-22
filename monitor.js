@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import WebSocket from 'ws';
 import { ContainerBuilder, MessageFlags, SectionBuilder, TextDisplayBuilder, ThumbnailBuilder, SeparatorSpacingSize } from "discord.js";
-import { Connection } from '@solana/web3.js';
+import { Connection, PublicKey, StakeProgram } from '@solana/web3.js';
 import validatorDMSubscriptionSchema from "./schema/validatorDMSubscriptions.js";
 import validatorSubscriptionSchema from './schema/validatorSubscriptions.js';
 import validatorTips from './schema/validatorTips.js';
@@ -34,20 +34,20 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         this.batchTimeouts = new Map();
         this.reconnectAttempts = 0;
         this.currentWsUrl = process.env.fdWsEndpoint;
-        
-        
-        this.epochInfoCache = { data: null, timestamp: 0, ttl: 30000 }; 
-        this.voteAccountsCache = { data: null, timestamp: 0, ttl: 60000 }; 
-        this.validatorDataCache = new Map(); 
-        this.validatorListCache = { data: null, timestamp: 0, ttl: 300000 }; 
-        
-        
-        this.slotToValidatorMap = new Map(); 
-        
-        
+
+
+        this.epochInfoCache = { data: null, timestamp: 0, ttl: 30000 };
+        this.voteAccountsCache = { data: null, timestamp: 0, ttl: 60000 };
+        this.validatorDataCache = new Map();
+        this.validatorListCache = { data: null, timestamp: 0, ttl: 300000 };
+
+
+        this.slotToValidatorMap = new Map();
+
+
         this.cacheCleanupInterval = setInterval(() => {
             this.cleanupCaches();
-        }, 300000); 
+        }, 300000);
     }
 
     connectWebSocket() {
@@ -146,7 +146,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         }, 5000);
     }
 
-    
+
     getCachedData(cache, fetchFunction) {
         const now = Date.now();
         if (cache.data && (now - cache.timestamp) < cache.ttl) {
@@ -160,18 +160,18 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         cache.timestamp = Date.now();
     }
 
-    
+
     cleanupCaches() {
         const now = Date.now();
-        
-        
+
+
         for (const [key, value] of this.validatorDataCache.entries()) {
-            if (now - value.timestamp > 300000) { 
+            if (now - value.timestamp > 300000) {
                 this.validatorDataCache.delete(key);
             }
         }
-        
-        
+
+
         if (this.processedSlots.size > 2000) {
             const slotsArray = Array.from(this.processedSlots).sort((a, b) => a - b);
             this.processedSlots = new Set(slotsArray.slice(-1000));
@@ -201,7 +201,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         return this.solPriceUSD;
     }
 
-    
+
     async getEpochInfo(commitment = 'confirmed') {
         const cached = this.getCachedData(this.epochInfoCache);
         if (cached) return cached;
@@ -216,7 +216,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         }
     }
 
-    
+
     async getVoteAccounts() {
         const cached = this.getCachedData(this.voteAccountsCache);
         if (cached) return cached;
@@ -231,11 +231,11 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         }
     }
 
-    
+
     async getValidatorData(validatorVoteAddress, currentEpoch) {
         const cacheKey = `${validatorVoteAddress}-${currentEpoch}`;
         const cached = this.validatorDataCache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp) < 60000) { 
+        if (cached && (Date.now() - cached.timestamp) < 60000) {
             return cached.data;
         }
 
@@ -307,13 +307,13 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
 
                 if (!this.deepEqual(this.leaderSchedule, newSchedule)) {
                     this.leaderSchedule = newSchedule;
-                    
-                    
+
+
                     this.buildSlotLookupMap();
-                    
+
                     break;
                 } else {
-                    
+
                     await new Promise(r => setTimeout(r, 5000));
                 }
             } while (true);
@@ -324,33 +324,33 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
     }
 
     buildSlotLookupMap() {
-        
+
         this.slotToValidatorMap.clear();
-        
-        
+
+
         for (const [validator, slots] of Object.entries(this.leaderSchedule)) {
             for (const relativeSlot of slots) {
                 this.slotToValidatorMap.set(relativeSlot, validator);
             }
         }
-        
+
         console.log(`🗺️ Built slot lookup map with ${this.slotToValidatorMap.size} slots for ${Object.keys(this.leaderSchedule).length} validators`);
     }
 
     isTargetValidatorSlot(slot, epochInfo) {
         const relativeSlot = slot - epochInfo.absoluteSlot + epochInfo.slotIndex;
-        
+
         return this.slotToValidatorMap.get(relativeSlot) || null;
     }
 
     async getBlockDetails(slot, retryCount = 0) {
         try {
-            
-            
+
+
             return await this.connection.getBlock(slot, {
                 encoding: 'json',
-                transactionDetails: 'none', 
-                rewards: false, 
+                transactionDetails: 'none',
+                rewards: false,
                 maxSupportedTransactionVersion: 0
             });
         } catch (error) {
@@ -489,7 +489,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                 );
             }
 
-            
+
             await validatorTips.updateOne(
                 { validatorAddress: validatorAddress },
                 {
@@ -579,18 +579,18 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
     }
 
     async processValidatorBlock(slot, validatorAddress) {
-        
+
         const [block, slotData] = await Promise.all([
             this.getBlockDetails(slot),
             this.extractFeesAndTips(slot, validatorAddress)
         ]);
-        
+
         if (!block) return null;
 
         const { feesEarned, tips, transactionCount } = slotData;
         const totalEarnings = feesEarned + tips;
 
-        
+
 
         return {
             slot: slot,
@@ -661,10 +661,10 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
 
         container.addSectionComponents(section2);
         container.addSeparatorComponents(separator => separator.setSpacing(SeparatorSpacingSize.Large));
-        
+
         let extraEmoji = "";
         const totalEarningsUSD = this.solToUSD(totalEarnings);
-        if(totalEarningsUSD > 50)  extraEmoji = "\`👑\` ";
+        if (totalEarningsUSD > 50) extraEmoji = "\`👑\` ";
 
         const text2 = new TextDisplayBuilder()
             .setContent([
@@ -727,12 +727,12 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
             }
         }
 
-        
+
         if (messagePromises.length > 0) {
             await Promise.allSettled(messagePromises);
         }
 
-        
+
         if (invalidChannels.length > 0) {
             for (const { subscriptionId, channelId } of invalidChannels) {
                 await this.cleanupSubscription(subscriptionId, channelId, false);
@@ -747,8 +747,8 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         }
 
         const batch = this.pendingBlocks.get(validator);
-        
-        
+
+
         const isDuplicate = batch.some(block => block.slot === blockInfo.slot);
         if (isDuplicate) {
             console.log(`[BATCH] Duplicate slot ${blockInfo.slot} detected, skipping`);
@@ -758,7 +758,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         batch.push(blockInfo);
         const batchSize = batch.length;
         const batchSlots = batch.map(b => b.slot).join(', ');
-        
+
         console.log(`[BATCH] ${validator.substring(0, 8)}... now has ${batchSize} slots: [${batchSlots}]`);
 
         if (batchSize === 4) {
@@ -886,16 +886,16 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
 
             if (currentSlot > this.lastCheckedSlot) {
                 const epochInfo = await this.getEpochInfo('confirmed');
-                if (epochInfo.epoch !== this.currentEpoch) { 
+                if (epochInfo.epoch !== this.currentEpoch) {
                     await this.updateLeaderSchedule(currentSlot);
-                    
+
                     logStream.end();
                     fs.renameSync("./slotsData/slot-current.jsonl", `./slotsData/slot-${this.currentEpoch - 1}.jsonl`);
                     logStream = fs.createWriteStream("./slotsData/slot-current.jsonl", { flags: "a" });
 
                     setTimeout(async () => {
                         await this.epochEnd(epochInfo);
-                    }, 30 * 60 * 1000)
+                    }, 15 * 60 * 1000)
                 }
 
                 const newSlots = [];
@@ -915,12 +915,12 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
 
                 this.lastCheckedSlot = currentSlot;
 
-                
+
                 if (newSlots.length > 0) {
                     await this.fetchSOLPrice();
                 }
 
-                
+
                 const blockPromises = newSlots.map(async ({ slot, validator }) => {
                     try {
                         const startTime = Date.now();
@@ -935,10 +935,10 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                 });
 
                 const results = await Promise.all(blockPromises);
-                
+
                 console.log(`[DEBUG] Processed ${results.length} slots, successful: ${results.filter(r => r?.blockInfo).length}`);
-                
-                
+
+
                 for (const result of results) {
                     if (result?.blockInfo) {
                         console.log(`[DEBUG] Adding slot ${result.blockInfo.slot} to batch for ${result.validator.substring(0, 8)}`);
@@ -948,7 +948,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                     }
                 }
 
-                
+
             }
         } catch (error) {
             if (error.message.includes('429')) {
@@ -993,14 +993,14 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         const schema = isDM ? validatorDMSubscriptionSchema : validatorSubscriptionSchema;
         const pullField = isDM ? 'subscribers' : 'subscriptions';
         const matchField = isDM ? 'userId' : 'channelId';
-        
+
         const result = await schema.findOneAndUpdate(
             { _id: subscriptionId },
             { $pull: { [pullField]: { [matchField]: channelOrUserId } } },
             { new: true }
         );
-        
-        
+
+
         if (result && (!result[pullField] || result[pullField].length === 0)) {
             await schema.deleteOne({ _id: subscriptionId });
             console.log(`🗑️ Deleted ${isDM ? 'DM' : 'channel'} subscription ${subscriptionId} - no ${isDM ? 'subscribers' : 'channels'} remaining`);
@@ -1067,7 +1067,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                 console.error(`⚠️ Error fetching data for ${validatorVoteAddress}:`, err.message);
             }
 
-            
+
             await new Promise(r => setTimeout(r, 5 * 60 * 1000));
         }
     }
@@ -1156,31 +1156,33 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
 
     async getVaultFees(epoch, voteAddress, valiMEV, valiComm) {
         try {
-            const latestFileResponse = await fetch(`https://raw.githubusercontent.com/SolanaVault/stakebot-data/refs/heads/main/${epoch}/epoch-stats-latest.txt`);
-            if (!latestFileResponse.ok) {
-                throw new Error(`Failed to fetch latest file name: ${latestFileResponse.status}`);
-            }
-            const latestFile = await latestFileResponse.text();
-            const fileName = latestFile.trim();
+            const STAKER = new PublicKey("GdNXJobf8fbTR5JSE7adxa6niaygjx4EEbnnRaDCHMMW");
+            const VOTE = new PublicKey(voteAddress);
 
-            const validatorTargetsResponse = await fetch(`https://raw.githubusercontent.com/SolanaVault/stakebot-data/refs/heads/main/${epoch}/${fileName}`);
-            if (!validatorTargetsResponse.ok) {
-                throw new Error(`Failed to fetch validator targets: ${validatorTargetsResponse.status}`);
-            }
-            const validatorTargetsData = await validatorTargetsResponse.json();
 
-            const matchingValidator = validatorTargetsData.validatorTargets?.find(
-                validator => validator.votePubkey === voteAddress
+            const accounts = await this.connection.getParsedProgramAccounts(
+                StakeProgram.programId,
+                {
+                    filters: [{
+                        memcmp: { offset: 44, bytes: STAKER.toBase58() }
+                    }]
+                }
             );
 
-            if (!matchingValidator) {
-                console.log(`No matching validator found for vote address: ${voteAddress}`);
-                return 0;
+            let lamports = 0n;
+            let matchingAccounts = 0;
+            for (const a of accounts) {
+                const d = a.account.data.parsed?.info?.stake?.delegation;
+                if (d?.voter === VOTE.toBase58()) {
+                    const stakeAmount = BigInt(d.stake || 0);
+                    lamports += stakeAmount;
+                    matchingAccounts++;
+                }
             }
 
-            const undirectedWhitelist = parseFloat(matchingValidator.targetStake?.undirectedWhitelist || 0);
+            const undirectedWhitelist = Number(lamports);
+
             if (undirectedWhitelist <= 0) {
-                console.log(`Validator ${voteAddress} has no undirected whitelist stake`);
                 return 0;
             }
 
@@ -1200,70 +1202,54 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
 
             const stakeByVault = undirectedWhitelist / 1e9;
 
-            console.log(
-                `avgMevPerBlock: ${avgMevPerBlock}`,
-                `valiMEV: ${valiMEV}`,
-                `avgRewardsPerBlock: ${avgRewardsPerBlock}`,
-                `stakeByVault: ${stakeByVault}`,
-                `avgStakePerLeaderSlot: ${avgStakePerLeaderSlot}`,
-                `chainInflationRate (from RPC): ${chainInflationRate}`,
-                `epochsPerYear: ${epochsPerYear}`,
-                `valiComm: ${valiComm}`
-            )
-
             const mevComponent = (avgMevPerBlock * valiMEV) + avgRewardsPerBlock;
             const stakeRatio = stakeByVault / avgStakePerLeaderSlot;
             const inflationComponent = stakeByVault * (chainInflationRate / epochsPerYear) * valiComm;
-            
+
             const totalFees = (mevComponent * stakeRatio + inflationComponent) * 0.25;
 
-            console.log(`Vault fees calculated for ${voteAddress}: ${totalFees.toFixed(6)} SOL`);
+            console.log(totalFees, "TOTAL FEES", typeof totalFees);
+
             return totalFees;
 
         } catch (error) {
-            console.error(`Error calculating vault fees for ${voteAddress}:`, error);
+            console.error(`[VAULT FEES] ❌ Error calculating vault fees for ${voteAddress} (epoch ${epoch}):`, {
+                error: error.message,
+                stack: error.stack,
+                voteAddress,
+                epoch,
+                valiMEV,
+                valiComm
+            });
             return 0;
         }
     }
 
-    async get2ZFees(validatorAddress, leaderRewards) {
-        let data = await fetch(`https://www.validators.app/api/v1/validators/mainnet/${validatorAddress}.json`, {
-            headers: {
-                'Token': process.env.validatorsAppApi
-            }
-        })
-        data = await data.json();
-        console.log(data, "VALIDATOR DATA FOR DZ");
-        if(data.is_dz) {
-            return (leaderRewards * 0.05).toFixed(2);
-        } else {
-            return 0
-        }
-    }
+
 
     async epochEnd(currentEpochInfo) {
         console.log(`Epoch ${currentEpochInfo.epoch - 1} ended.`);
-        
+
         await loadValidatorLists();
 
-        
+
         const epochSchedule = await this.connection.getLeaderSchedule();
 
-        fs.writeFileSync(`./scheduleData/schedule-${currentEpochInfo.epoch}.json`, JSON.stringify(epochSchedule, null, 2));
+        //fs.writeFileSync(`./scheduleData/schedule-${currentEpochInfo.epoch}.json`, JSON.stringify(epochSchedule, null, 2));
 
-        
+
         if (fs.existsSync(`./scheduleData/schedule-${currentEpochInfo.epoch - 3}.json`)) {
             fs.unlinkSync(`./scheduleData/schedule-${currentEpochInfo.epoch - 3}.json`);
         }
 
-        
+
         try {
             const allSubscriptions = await validatorDMSubscriptionSchema.find();
 
             for (const sub of allSubscriptions) {
                 const validatorVoteAddress = sub.validatorVoteAddress;
 
-            
+
                 const response = await fetch(`https://api.thevalidators.io/validators-history/history?network=mainnet&vote_id=${validatorVoteAddress}&epoch_count=1000&epoch_from=${currentEpochInfo.epoch}`);
                 const data = await response.json();
                 const epochData = data.data.find(item => item.epoch === currentEpochInfo.epoch - 1);
@@ -1271,22 +1257,24 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                 let jitoData = await fetch(`https://api.jpool.one/validators?fields=apy,is_jito,jito_apy,node_ip,jito_commission_bps,skip_rate,uptime&vote=${validatorVoteAddress}`);
                 jitoData = await jitoData.json();
 
-                
-                
-
                 let currentEpochData = await fetch(`https://api.thevalidators.io/validators/list?network=mainnet&select=voteId,validatorId,slotIndex,leaderSlotsTotal,leaderSlotsDone,leaderSlotsEpoch,fee,totalStake&vote_id=${validatorVoteAddress}`)
                 currentEpochData = await currentEpochData.json();
                 currentEpochData = currentEpochData.data[0]
 
                 const stakeInfo = await this.getValidatorStakeInfo(data.data, currentEpochInfo.epoch);
                 const mevCommission = epochData.mevCommission / 100;
-                const totalEarnings = parseFloat(epochData.votingReward) - parseFloat(epochData.votingFee) + parseFloat(epochData.commissionReward) + parseFloat(epochData.jitoReward) + parseFloat(epochData.votingCompensation);
+
+                let vaultData = "";
+                const vaultFees = await this.getVaultFees(currentEpochInfo.epoch - 1, validatorVoteAddress, mevCommission / 100, epochData.fee / 100);
+                if (vaultFees > 0) vaultData = `\n<:thevault:1420867315141968063> **Vault Fees:** <:sol:1397286031593705512> ${Number(vaultFees).toFixed(4)} ($${this.solToUSD(vaultFees)})`;
 
                 const validatorList = getMainnetList();
                 const basicInfo = validatorList.find(item => item.voteId === validatorVoteAddress);
 
                 const votingFeeSol = (epochData.votingFee / 1e9);
                 const votingRewardSol = (epochData.votingReward / 1e9);
+
+                const totalEarnings = parseFloat(epochData.votingReward) - parseFloat(epochData.votingFee) + parseFloat(epochData.commissionReward) + parseFloat(epochData.jitoReward) + parseFloat(epochData.votingCompensation) - parseFloat(vaultFees * 1e9);
                 const commissionRewardSol = (epochData.commissionReward / 1e9);
                 const votingCompensationSol = (epochData.votingCompensation / 1e9);
                 const totalEarningsSol = (totalEarnings / 1e9);
@@ -1297,21 +1285,11 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                 const votingCompensationUsd = this.solToUSD(votingCompensationSol);
                 const totalEarningsUsd = this.solToUSD(totalEarningsSol);
 
-                let vaultData = "";
-                const vaultFees = await this.getVaultFees(currentEpochInfo.epoch - 1, validatorVoteAddress, mevCommission/100, epochData.fee/100);
-                if(vaultFees > 0) {
-                    vaultData = `<:thevault:1420867315141968063> **Vault Fees:** <:sol:1397286031593705512> ${vaultFees.toFixed(2)} ($${this.solToUSD(vaultFees)})`;
-                }
-                let dzData = "";
-                const dzFees = await this.get2ZFees(sub.validatorAddress, votingRewardSol);
-                console.log(dzFees, "DZ FEES");
-                if(dzFees > 0) {
-                    dzData = `<:doublezero:1422326611230851093> **DZ Fees:** <:sol:1397286031593705512> ${dzFees.toFixed(2)} ($${this.solToUSD(dzFees)})`;
-                }
+
                 const epochInfo = await this.getEpochInfo();
                 const nextEpoch = epochInfo.epoch + 1;
                 const firstSlotNextEpoch = nextEpoch * 432000;
-                
+
                 const url = process.env.rpcUrl;
                 const options = {
                     method: 'POST',
@@ -1360,17 +1338,17 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
 **Commission (${epochData.fee}%):** <:sol:1397286031593705512> ${commissionRewardSol.toFixed(2)} ($${commissionRewardUsd})
 **Total Tips (${mevCommission}%):** <:sol:1397286031593705512> ${(totalTipsEarned.toFixed(2) * (mevCommission / 100)).toFixed(2)} ($${Number(this.solToUSD(totalTipsEarned * (mevCommission / 100))).toFixed(2)})
 **Voting Fees:** <:sol:1397286031593705512> -${votingFeeSol.toFixed(2)} (-$${votingFeeUsd})
-**Compensation:** <:sol:1397286031593705512> ${votingCompensationSol.toFixed(2)} ($${votingCompensationUsd})${vaultFees > 0 ? `\n${vaultData}\n` : ''}${dzData}
+**Compensation:** <:sol:1397286031593705512> ${votingCompensationSol.toFixed(2)} ($${votingCompensationUsd})${vaultData}
 
 \`🏆\` **Total Earnings:** <:sol:1397286031593705512> ${totalEarningsSol.toFixed(2)} ($${totalEarningsUsd.toLocaleString()})
 `);
 
                 container.addTextDisplayComponents(text3);
-                
+
                 // Batch DM sending for better performance
                 const dmPromises = [];
                 const failedUsers = [];
-                
+
                 for (const user of sub.subscribers) {
                     dmPromises.push(
                         client.users.fetch(user.userId)
@@ -1383,20 +1361,20 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                             })
                             .catch(err => {
                                 console.error(`Failed to DM user ${user.userId}:`, err.message);
-                                
+
                                 if (err.code === 50007 || err.code === 10013) {
                                     failedUsers.push({ subscriptionId: sub._id, userId: user.userId, reason: err.message });
                                 }
                             })
                     );
                 }
-                
-                
+
+
                 if (dmPromises.length > 0) {
                     await Promise.allSettled(dmPromises);
                 }
-                
-                
+
+
                 if (failedUsers.length > 0) {
                     for (const { subscriptionId, userId, reason } of failedUsers) {
                         await this.cleanupSubscription(subscriptionId, userId, true);
@@ -1425,6 +1403,8 @@ async function main() {
         let validatorAddresses = [...new Set(currentValidators.map(v => v.validatorAddress))];
 
         await monitor.initialize(validatorAddresses);
+        const epochInfo = await monitor.getEpochInfo();
+        await monitor.epochEnd(epochInfo);
 
         setInterval(async () => {
             try {
@@ -1471,7 +1451,7 @@ monitor.on(
                 return;
             }
 
-            
+
             const validatorData = await monitor.getValidatorData(validatorVoteAddress, currentEpoch);
             if (!validatorData) {
                 console.warn(`Could not fetch validator data for ${validatorVoteAddress}`);
@@ -1541,23 +1521,23 @@ ${jpoolData.jito_commission_bps > 0
 
             try {
                 const channel = guild.channels.cache.get(subscription.updatingStatus.channelId);
-                
+
                 if (!channel) {
                     console.log(`⚠️ Channel ${subscription.updatingStatus.channelId} not found, removing subscription`);
-                    
+
                     // Find the parent subscription document and remove this subscription
                     const parentDoc = await validatorSubscriptionSchema.findOne({
                         "subscriptions._id": subscription._id
                     });
-                    
+
                     if (parentDoc) {
-                        
+
                         const result = await validatorSubscriptionSchema.findOneAndUpdate(
                             { _id: parentDoc._id },
                             { $pull: { subscriptions: { _id: subscription._id } } },
                             { new: true }
                         );
-                        
+
                         if (result && (!result.subscriptions || result.subscriptions.length === 0)) {
                             await validatorSubscriptionSchema.deleteOne({ _id: parentDoc._id });
                             console.log(`🗑️ Deleted validator subscription ${parentDoc._id} - no channels remaining`);
@@ -1567,7 +1547,7 @@ ${jpoolData.jito_commission_bps > 0
                     }
                     return;
                 }
-                
+
                 const message = await channel.messages.fetch(subscription.updatingStatus.messageId);
 
                 await message.edit({
@@ -1576,21 +1556,21 @@ ${jpoolData.jito_commission_bps > 0
                 });
             } catch (error) {
                 console.log(`❌ Failed to update message for ${validatorAddress}:`, error.message);
-                
-                
-                if (error.code === 10008 || error.code === 50001 || error.code === 50013) { 
+
+
+                if (error.code === 10008 || error.code === 50001 || error.code === 50013) {
                     const parentDoc = await validatorSubscriptionSchema.findOne({
                         "subscriptions._id": subscription._id
                     });
-                    
+
                     if (parentDoc) {
                         const result = await validatorSubscriptionSchema.findOneAndUpdate(
                             { _id: parentDoc._id },
                             { $pull: { subscriptions: { _id: subscription._id } } },
                             { new: true }
                         );
-                        
-                        
+
+
                         if (result && (!result.subscriptions || result.subscriptions.length === 0)) {
                             await validatorSubscriptionSchema.deleteOne({ _id: parentDoc._id });
                             console.log(`🗑️ Deleted validator subscription ${parentDoc._id} - no channels remaining`);
@@ -1599,7 +1579,7 @@ ${jpoolData.jito_commission_bps > 0
                         }
                     }
                 } else {
-                    
+
                     await validatorSubscriptionSchema.updateOne(
                         { "subscriptions._id": subscription._id },
                         { $set: { "subscriptions.$.updatingStatus.status": false } }

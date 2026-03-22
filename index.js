@@ -21,8 +21,7 @@ async function startBot() {
         await client.application.commands.set([]);
 
         await client.guilds.cache
-            //.get("1322679317787971625")
-            .get("732580703447023617")
+            .get(process.env.serverId)
             .commands.set(arrayOfSlashCommands);
     });
 

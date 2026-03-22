@@ -140,3 +140,4 @@ dist
 .env.nova
 slotsData/
 scheduleData/
+.DS_Store
