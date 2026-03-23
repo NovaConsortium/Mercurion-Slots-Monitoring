@@ -406,7 +406,8 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         };
         data = data.allData[0];
 
-        await this.updateValidatorTips(validatorAddress, slotNumber, data?.tips || 0, this.currentEpoch);
+        const feesLamports = (Number(data?.transaction_fee) || 0) + (Number(data?.priority_fee) || 0);
+        await this.updateValidatorTips(validatorAddress, slotNumber, data?.tips || 0, feesLamports, this.currentEpoch);
 
         return {
             slot: data.slot,
@@ -430,9 +431,10 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         return { feesEarned, tips, transactionCount };
     }
 
-    async updateValidatorTips(validatorAddress, slot, tipsLamports, currentEpoch) {
+    async updateValidatorTips(validatorAddress, slot, tipsLamports, feesLamports, currentEpoch) {
         try {
             const tipsSOL = tipsLamports / 1e9;
+            const feesSOL = feesLamports / 1e9;
             const updateResult = await validatorTips.findOneAndUpdate(
                 {
                     validatorAddress: validatorAddress,
@@ -442,6 +444,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                     $inc: {
                         'epochs.$.totalTipsSOL': tipsSOL,
                         'epochs.$.totalTipsLamports': tipsLamports,
+                        'epochs.$.totalFeesSOL': feesSOL,
                         'epochs.$.blockCount': 1
                     },
                     $push: {
@@ -468,6 +471,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                                 epochNumber: currentEpoch,
                                 totalTipsSOL: tipsSOL,
                                 totalTipsLamports: tipsLamports,
+                                totalFeesSOL: feesSOL,
                                 blockCount: 1,
                                 epochStartDate: new Date(),
                                 blocks: [{
@@ -526,6 +530,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
                 epochNumber: currentEpoch,
                 totalTipsSOL: 0,
                 totalTipsLamports: 0,
+                totalFeesSOL: 0,
                 blockCount: 0
             };
         } catch (error) {
@@ -636,7 +641,7 @@ class SolanaContinuousValidatorMonitor extends EventEmitter {
         const totalEarnings = totalFeesSOL + (totalTipsSOL * mevCommission);
         const totalTxs = sortedBlocks.reduce((sum, block) => sum + block.totalTransactions, 0);
 
-        const leaderRewards = currentEpochEarnings.leaderRewards + totalFeesSOL
+        const leaderRewards = (currentEpochTips.totalFeesSOL || 0) + currentEpochEarnings.leaderRewards;
 
         const validatorData = await this.getValidatorData(validatorAccount.votePubkey, this.currentEpoch);
         const info = validatorData?.valiStats || {};

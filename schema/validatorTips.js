@@ -20,13 +20,17 @@ const validatorTipsSchema = new mongoose.Schema({
             type: Number, 
             default: 0 
         },
-        totalTipsLamports: { 
-            type: Number, 
-            default: 0 
+        totalTipsLamports: {
+            type: Number,
+            default: 0
         },
-        blockCount: { 
-            type: Number, 
-            default: 0 
+        totalFeesSOL: {
+            type: Number,
+            default: 0
+        },
+        blockCount: {
+            type: Number,
+            default: 0
         },
         epochStartDate: { 
             type: Date, 
